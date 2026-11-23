@@ -1,0 +1,999 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MiniCraft 3D - Expanded Survival Edition</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+  body { background: #111; color: #fff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; overflow: hidden; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+
+  #hud { position: fixed; inset: 0; pointer-events: none; }
+  #top-bar { position: absolute; top: 12px; left: 12px; background: rgba(0,0,0,0.55); padding: 10px 14px; border-radius: 6px; font-size: 13px; line-height: 1.5; border: 1px solid rgba(255,255,255,0.15); }
+  #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 18px; height: 18px; }
+  #crosshair::before, #crosshair::after { content: ''; position: absolute; background: rgba(255,255,255,0.85); }
+  #crosshair::before { top: 8px; left: 0; width: 18px; height: 2px; }
+  #crosshair::after { left: 8px; top: 0; width: 2px; height: 18px; }
+
+  #underwater-tint { position: fixed; inset: 0; background: rgba(15, 75, 160, 0.42); pointer-events: none; display: none; }
+  #damage-flash { position: fixed; inset: 0; background: rgba(220, 20, 20, 0.35); pointer-events: none; opacity: 0; transition: opacity 0.15s; }
+
+  #bottom-hud { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  #bars { display: flex; justify-content: space-between; width: 468px; font-size: 14px; font-weight: bold; text-shadow: 1px 1px 2px #000; }
+  .bar-group { display: flex; gap: 2px; background: rgba(0,0,0,0.45); padding: 4px 8px; border-radius: 4px; }
+  #hotbar { display: flex; gap: 4px; background: rgba(0,0,0,0.7); padding: 5px; border-radius: 6px; border: 2px solid #555; }
+  .slot { width: 48px; height: 48px; border: 2px solid #444; border-radius: 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 10px; position: relative; background: rgba(255,255,255,0.06); }
+  .slot.active { border-color: #fff; background: rgba(255,255,255,0.22); transform: scale(1.06); }
+  .slot-swatch { width: 22px; height: 22px; border-radius: 3px; margin-bottom: 2px; border: 1px solid rgba(0,0,0,0.5); }
+  .slot-key { position: absolute; top: 2px; left: 4px; font-size: 9px; color: #ccc; }
+  .slot-count { position: absolute; bottom: 2px; right: 4px; font-size: 10px; font-weight: bold; }
+
+  #toast { position: absolute; top: 18%; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.75); padding: 8px 16px; border-radius: 20px; font-size: 14px; opacity: 0; transition: opacity 0.25s; }
+
+  #overlay { position: fixed; inset: 0; background: rgba(15, 18, 22, 0.85); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 10; text-align: center; padding: 20px; }
+  #overlay h1 { font-size: 42px; letter-spacing: 2px; margin-bottom: 8px; color: #6ee76e; text-shadow: 0 3px 0 #1e4d1e; }
+  #overlay p { max-width: 620px; color: #ccc; margin-bottom: 18px; line-height: 1.5; font-size: 14px; }
+  .controls-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 24px; background: rgba(255,255,255,0.07); padding: 14px 20px; border-radius: 8px; margin-bottom: 20px; text-align: left; font-size: 13px; }
+  .btn-row { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  button { background: #3b8526; color: #fff; border: 2px solid #5bc23c; padding: 11px 22px; font-size: 15px; font-weight: bold; border-radius: 6px; cursor: pointer; pointer-events: auto; }
+  button:hover { background: #489e2f; }
+  button.secondary { background: #333; border-color: #666; }
+  button.secondary:hover { background: #444; }
+  #file-input { display: none; }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+<div id="underwater-tint"></div>
+<div id="damage-flash"></div>
+
+<div id="hud">
+  <div id="top-bar">
+    <div><strong>MiniCraft 3D</strong> — Survival Edition</div>
+    <div id="pos-info">Pos: 0, 0, 0 | Mode: Survival</div>
+    <div id="time-info">Time: Day | Mobs: 0</div>
+    <div style="color:#aaa; font-size:11px; margin-top:3px;">[K] Quick Save | [L] Quick Load | [E] Eat Apple | [ESC] Pause / Export</div>
+  </div>
+  <div id="crosshair"></div>
+  <div id="toast"></div>
+
+  <div id="bottom-hud">
+    <div id="bars">
+      <div class="bar-group" id="health-bar" title="Health">❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️</div>
+      <div class="bar-group" id="air-bar" style="display:none;" title="Oxygen">🫧🫧🫧🫧🫧</div>
+      <div class="bar-group" id="hunger-bar" title="Hunger">🍗🍗🍗🍗🍗🍗🍗🍗🍗🍗</div>
+    </div>
+    <div id="hotbar"></div>
+  </div>
+</div>
+
+<div id="overlay">
+  <h1>MINICRAFT 3D</h1>
+  <p>Expanded Survival Edition with procedural caves, water swimming, hostile slimes &amp; zombies, combat, health &amp; hunger, and world save/load.</p>
+  <div class="controls-grid">
+    <div><strong>WASD:</strong> Move / Swim</div>
+    <div><strong>Space:</strong> Jump / Swim Up</div>
+    <div><strong>Left Click:</strong> Mine / Attack Mob</div>
+    <div><strong>Right Click:</strong> Place Block / Eat</div>
+    <div><strong>1–9 / Scroll:</strong> Select Slot</div>
+    <div><strong>E:</strong> Eat Apple (+4 Hunger, +2 HP)</div>
+    <div><strong>F:</strong> Toggle Fly / Survival Mode</div>
+    <div><strong>K / L:</strong> Save / Load Browser World</div>
+  </div>
+  <div class="btn-row">
+    <button id="play-btn">Click to Play</button>
+    <button id="save-file-btn" class="secondary">Download Save (.json)</button>
+    <button id="load-file-btn" class="secondary">Load Save (.json)</button>
+    <button id="new-world-btn" class="secondary">New World</button>
+  </div>
+  <input type="file" id="file-input" accept=".json">
+</div>
+
+<script>
+(() => {
+  // --- BLOCK DEFINITIONS ---
+  const BLOCKS = {
+    0: { name: 'Air', solid: false, transparent: true },
+    1: { name: 'Grass', color: [0.34, 0.68, 0.24], top: [0.38, 0.76, 0.26], side: [0.46, 0.34, 0.22], solid: true },
+    2: { name: 'Dirt', color: [0.48, 0.34, 0.21], solid: true },
+    3: { name: 'Stone', color: [0.48, 0.49, 0.51], solid: true },
+    4: { name: 'Oak Wood', color: [0.42, 0.29, 0.16], top: [0.58, 0.44, 0.26], solid: true },
+    5: { name: 'Leaves', color: [0.22, 0.52, 0.18], solid: true, transparent: false },
+    6: { name: 'Sand', color: [0.85, 0.80, 0.55], solid: true },
+    7: { name: 'Water', color: [0.14, 0.44, 0.85], solid: false, transparent: true, liquid: true },
+    8: { name: 'Cobble', color: [0.38, 0.38, 0.40], solid: true },
+    9: { name: 'Planks', color: [0.66, 0.50, 0.29], solid: true },
+    10: { name: 'Torch', color: [0.98, 0.82, 0.25], solid: false, transparent: true, light: true }
+  };
+
+  const HOTBAR_ITEMS = [
+    { id: 1, name: 'Grass', swatch: '#57ad3d', count: 64 },
+    { id: 2, name: 'Dirt', swatch: '#7a5736', count: 64 },
+    { id: 3, name: 'Stone', swatch: '#7b7d82', count: 64 },
+    { id: 8, name: 'Cobble', swatch: '#616166', count: 64 },
+    { id: 9, name: 'Planks', swatch: '#a8804a', count: 64 },
+    { id: 4, name: 'Wood', swatch: '#6b4a29', count: 32 },
+    { id: 6, name: 'Sand', swatch: '#d9cc8c', count: 64 },
+    { id: 10, name: 'Torch', swatch: '#fad140', count: 32 },
+    { id: 'sword', name: 'Sword', swatch: '#8be9fd', count: 1 },
+  ];
+
+  // --- WORLD DIMENSIONS ---
+  const WX = 64, WY = 40, WZ = 64;
+  const WATER_LEVEL = 13;
+  let world = new Uint8Array(WX * WY * WZ);
+  let worldSeed = Math.floor(Math.random() * 100000);
+
+  const idx = (x, y, z) => x + z * WX + y * WX * WZ;
+  const inBounds = (x, y, z) => x >= 0 && x < WX && y >= 0 && y < WY && z >= 0 && z < WZ;
+  const getBlock = (x, y, z) => inBounds(x, y, z) ? world[idx(x, y, z)] : (y < 0 ? 3 : 0);
+  const setBlock = (x, y, z, id) => { if (inBounds(x, y, z)) world[idx(x, y, z)] = id; };
+
+  // --- DETERMINISTIC NOISE FOR TERRAIN & CAVES ---
+  function hash(x, y, z) {
+    let n = Math.sin(x * 127.1 + y * 311.7 + z * 74.7 + worldSeed * 0.13) * 43758.5453123;
+    return n - Math.floor(n);
+  }
+  function smoothNoise(x, y, z) {
+    const ix = Math.floor(x), iy = Math.floor(y), iz = Math.floor(z);
+    const fx = x - ix, fy = y - iy, fz = z - iz;
+    const ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy), uz = fz * fz * (3 - 2 * fz);
+    const lerp = (a, b, t) => a + (b - a) * t;
+    const c000 = hash(ix, iy, iz), c100 = hash(ix+1, iy, iz);
+    const c010 = hash(ix, iy+1, iz), c110 = hash(ix+1, iy+1, iz);
+    const c001 = hash(ix, iy, iz+1), c101 = hash(ix+1, iy, iz+1);
+    const c011 = hash(ix, iy+1, iz+1), c111 = hash(ix+1, iy+1, iz+1);
+    return lerp(
+      lerp(lerp(c000, c100, ux), lerp(c010, c110, ux), uy),
+      lerp(lerp(c001, c101, ux), lerp(c011, c111, ux), uy),
+      uz
+    );
+  }
+  function fbm2D(x, z) {
+    return smoothNoise(x * 0.05, 0, z * 0.05) * 0.65 + smoothNoise(x * 0.12, 1, z * 0.12) * 0.35;
+  }
+  function caveNoise(x, y, z) {
+    const n1 = smoothNoise(x * 0.09, y * 0.11, z * 0.09);
+    const n2 = smoothNoise(x * 0.18 + 31, y * 0.18 + 17, z * 0.18 + 53);
+    return (n1 * 0.7 + n2 * 0.3);
+  }
+
+  function generateWorld(seed) {
+    worldSeed = seed ?? Math.floor(Math.random() * 100000);
+    world.fill(0);
+    for (let x = 0; x < WX; x++) {
+      for (let z = 0; z < WZ; z++) {
+        const h = Math.floor(10 + fbm2D(x, z) * 14);
+        for (let y = 0; y < WY; y++) {
+          if (y === 0) {
+            setBlock(x, y, z, 3);
+          } else if (y < h - 3) {
+            // Carve underground caves
+            const c = caveNoise(x, y, z);
+            if (y > 2 && c > 0.66) {
+              setBlock(x, y, z, 0);
+            } else {
+              setBlock(x, y, z, 3);
+            }
+          } else if (y < h) {
+            const c = caveNoise(x, y, z);
+            if (y > 4 && c > 0.70 && h > WATER_LEVEL + 1) {
+              setBlock(x, y, z, 0); // Cave entrance
+            } else {
+              setBlock(x, y, z, h <= WATER_LEVEL + 1 ? 6 : 2);
+            }
+          } else if (y === h) {
+            const c = caveNoise(x, y, z);
+            if (y > WATER_LEVEL + 2 && c > 0.71) {
+              setBlock(x, y, z, 0);
+            } else {
+              setBlock(x, y, z, h <= WATER_LEVEL + 1 ? 6 : 1);
+            }
+          } else if (y <= WATER_LEVEL) {
+            setBlock(x, y, z, 7);
+          }
+        }
+        // Trees on grassy hills
+        if (h > WATER_LEVEL + 2 && x > 3 && x < WX - 4 && z > 3 && z < WZ - 4) {
+          if (getBlock(x, h, z) === 1 && hash(x, h, z) > 0.965) {
+            const trunkH = 4 + Math.floor(hash(x+5, h, z) * 2);
+            for (let ty = 1; ty <= trunkH; ty++) setBlock(x, h + ty, z, 4);
+            for (let lx = -2; lx <= 2; lx++) {
+              for (let lz = -2; lz <= 2; lz++) {
+                for (let ly = trunkH - 1; ly <= trunkH + 1; ly++) {
+                  if (Math.abs(lx) + Math.abs(lz) + Math.abs(ly - trunkH) <= 3) {
+                    if (getBlock(x + lx, h + ly, z + lz) === 0) {
+                      setBlock(x + lx, h + ly, z + lz, 5);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // --- PLAYER & SURVIVAL STATE ---
+  const player = {
+    x: 32, y: 26, z: 32,
+    vx: 0, vy: 0, vz: 0,
+    yaw: 0, pitch: -0.2,
+    health: 20, maxHealth: 20,
+    hunger: 20, maxHunger: 20,
+    air: 10, maxAir: 10,
+    apples: 5,
+    fly: false,
+    onGround: false,
+    inWater: false,
+    headInWater: false,
+    selectedSlot: 0,
+    hurtCooldown: 0,
+    hungerTimer: 0,
+    regenTimer: 0
+  };
+
+  // --- MOBS (HOSTILE SLIMES & ZOMBIES) ---
+  let mobs = [];
+  function spawnMob(x, y, z, type = 'slime') {
+    mobs.push({
+      x, y, z, vx: 0, vy: 0, vz: 0,
+      type,
+      hp: type === 'zombie' ? 14 : 8,
+      maxHp: type === 'zombie' ? 14 : 8,
+      hurtTimer: 0,
+      jumpTimer: Math.random() * 1.5,
+      attackCooldown: 0
+    });
+  }
+
+  function populateMobs() {
+    mobs = [];
+    for (let i = 0; i < 12; i++) {
+      const mx = 6 + Math.floor(Math.random() * (WX - 12));
+      const mz = 6 + Math.floor(Math.random() * (WZ - 12));
+      for (let my = WY - 2; my > 2; my--) {
+        if (getBlock(mx, my, mz) === 0 && getBlock(mx, my - 1, mz) !== 0 && getBlock(mx, my - 1, mz) !== 7) {
+          spawnMob(mx + 0.5, my, mz + 0.5, i % 2 === 0 ? 'zombie' : 'slime');
+          break;
+        }
+      }
+    }
+  }
+
+  // --- WEBGL SETUP ---
+  const canvas = document.getElementById('game');
+  const gl = canvas.getContext('webgl');
+  if (!gl) alert('WebGL not supported');
+
+  const vsSource = `
+    attribute vec3 aPos;
+    attribute vec3 aColor;
+    attribute float aLight;
+    uniform mat4 uProj;
+    uniform mat4 uView;
+    varying vec3 vColor;
+    varying float vFog;
+    void main() {
+      vec4 mvPos = uView * vec4(aPos, 1.0);
+      gl_Position = uProj * mvPos;
+      vColor = aColor * aLight;
+      vFog = clamp((-mvPos.z - 22.0) / 36.0, 0.0, 1.0);
+    }
+  `;
+  const fsSource = `
+    precision mediump float;
+    varying vec3 vColor;
+    varying float vFog;
+    uniform vec3 uSkyColor;
+    void main() {
+      vec3 col = mix(vColor, uSkyColor, vFog);
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `;
+
+  function compileShader(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    return s;
+  }
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, vsSource));
+  gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, fsSource));
+  gl.linkProgram(prog);
+  gl.useProgram(prog);
+
+  const aPos = gl.getAttribLocation(prog, 'aPos');
+  const aColor = gl.getAttribLocation(prog, 'aColor');
+  const aLight = gl.getAttribLocation(prog, 'aLight');
+  const uProj = gl.getUniformLocation(prog, 'uProj');
+  const uView = gl.getUniformLocation(prog, 'uView');
+  const uSkyColor = gl.getUniformLocation(prog, 'uSkyColor');
+
+  const worldBuffer = gl.createBuffer();
+  const mobBuffer = gl.createBuffer();
+  let worldVertexCount = 0;
+
+  // --- MESH BUILDER ---
+  const FACES = [
+    { dir: [0, 1, 0], shade: 1.0, verts: [[0,1,1],[1,1,1],[1,1,0],[0,1,0]] },   // Top
+    { dir: [0,-1, 0], shade: 0.5, verts: [[0,0,0],[1,0,0],[1,0,1],[0,0,1]] },   // Bottom
+    { dir: [1, 0, 0], shade: 0.8, verts: [[1,0,1],[1,0,0],[1,1,0],[1,1,1]] },   // Right
+    { dir: [-1,0, 0], shade: 0.8, verts: [[0,0,0],[0,0,1],[0,1,1],[0,1,0]] },   // Left
+    { dir: [0, 0, 1], shade: 0.9, verts: [[0,0,1],[1,0,1],[1,1,1],[0,1,1]] },   // Front
+    { dir: [0, 0,-1], shade: 0.7, verts: [[1,0,0],[0,0,0],[0,1,0],[1,1,0]] }    // Back
+  ];
+
+  function rebuildMesh() {
+    const data = [];
+    for (let y = 0; y < WY; y++) {
+      for (let z = 0; z < WZ; z++) {
+        for (let x = 0; x < WX; x++) {
+          const id = getBlock(x, y, z);
+          if (id === 0) continue;
+          const b = BLOCKS[id];
+
+          // Torch mini-mesh
+          if (id === 10) {
+            pushBox(data, x + 0.42, y, z + 0.42, 0.16, 0.65, 0.16, b.color, 1.15);
+            continue;
+          }
+
+          // Cave darkening based on depth & nearby torches
+          let caveLight = y < 14 ? Math.max(0.32, y / 14) : 1.0;
+          for (let dx = -3; dx <= 3; dx++) {
+            for (let dy = -2; dy <= 2; dy++) {
+              for (let dz = -3; dz <= 3; dz++) {
+                if (getBlock(x + dx, y + dy, z + dz) === 10) caveLight = 1.05;
+              }
+            }
+          }
+
+          for (let f = 0; f < 6; f++) {
+            const face = FACES[f];
+            const nx = x + face.dir[0], ny = y + face.dir[1], nz = z + face.dir[2];
+            const neighbor = getBlock(nx, ny, nz);
+            if (id === 7) {
+              // Render water surface only against air
+              if (neighbor !== 0) continue;
+            } else {
+              if (neighbor !== 0 && !BLOCKS[neighbor].transparent) continue;
+            }
+
+            let col = b.color;
+            if (f === 0 && b.top) col = b.top;
+            else if (f > 1 && b.side) col = b.side;
+
+            const light = face.shade * caveLight;
+            const v = face.verts;
+            const yOff = (id === 7 && f === 0) ? -0.12 : 0;
+            const quad = [0, 1, 2, 0, 2, 3];
+            for (const qi of quad) {
+              const vx = x + v[qi][0];
+              const vy = y + v[qi][1] + (v[qi][1] === 1 ? yOff : 0);
+              const vz = z + v[qi][2];
+              data.push(vx, vy, vz, col[0], col[1], col[2], light);
+            }
+          }
+        }
+      }
+    }
+    const arr = new Float32Array(data);
+    worldVertexCount = arr.length / 7;
+    gl.bindBuffer(gl.ARRAY_BUFFER, worldBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, arr, gl.STATIC_DRAW);
+  }
+
+  function pushBox(data, bx, by, bz, sx, sy, sz, col, lightMult = 1.0) {
+    for (let f = 0; f < 6; f++) {
+      const face = FACES[f];
+      const v = face.verts;
+      const light = face.shade * lightMult;
+      const quad = [0, 1, 2, 0, 2, 3];
+      for (const qi of quad) {
+        data.push(
+          bx + v[qi][0] * sx,
+          by + v[qi][1] * sy,
+          bz + v[qi][2] * sz,
+          col[0], col[1], col[2], light
+        );
+      }
+    }
+  }
+
+  // --- MATRIX HELPERS ---
+  function perspective(fov, aspect, near, far) {
+    const f = 1.0 / Math.tan(fov / 2);
+    return new Float32Array([
+      f / aspect, 0, 0, 0,
+      0, f, 0, 0,
+      0, 0, (far + near) / (near - far), -1,
+      0, 0, (2 * far * near) / (near - far), 0
+    ]);
+  }
+  function viewMatrix(x, y, z, yaw, pitch) {
+    const cy = Math.cos(yaw), sy = Math.sin(yaw);
+    const cp = Math.cos(pitch), sp = Math.sin(pitch);
+    const fx = sy * cp, fy = sp, fz = -cy * cp;
+    const rx = cy, ry = 0, rz = sy;
+    const ux = ry * fz - rz * fy;
+    const uy = rz * fx - rx * fz;
+    const uz = rx * fy - ry * fx;
+    return new Float32Array([
+      rx, ux, -fx, 0,
+      ry, uy, -fy, 0,
+      rz, uz, -fz, 0,
+      -(rx * x + ry * y + rz * z),
+      -(ux * x + uy * y + uz * z),
+      (fx * x + fy * y + fz * z),
+      1
+    ]);
+  }
+
+  // --- COLLISION & RAYCASTING ---
+  function collides(px, py, pz) {
+    const r = 0.28, h = 1.72;
+    for (let x = Math.floor(px - r); x <= Math.floor(px + r); x++) {
+      for (let y = Math.floor(py); y <= Math.floor(py + h); y++) {
+        for (let z = Math.floor(pz - r); z <= Math.floor(pz + r); z++) {
+          const b = getBlock(x, y, z);
+          if (BLOCKS[b] && BLOCKS[b].solid) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function raycastBlock(maxDist = 5.5) {
+    const dx = Math.sin(player.yaw) * Math.cos(player.pitch);
+    const dy = Math.sin(player.pitch);
+    const dz = -Math.cos(player.yaw) * Math.cos(player.pitch);
+    let x = player.x, y = player.y + 1.55, z = player.z;
+    let prevX = Math.floor(x), prevY = Math.floor(y), prevZ = Math.floor(z);
+    for (let t = 0; t < maxDist; t += 0.05) {
+      const bx = Math.floor(x + dx * t);
+      const by = Math.floor(y + dy * t);
+      const bz = Math.floor(z + dz * t);
+      const id = getBlock(bx, by, bz);
+      if (id !== 0 && id !== 7) {
+        return { bx, by, bz, prevX, prevY, prevZ, id };
+      }
+      prevX = bx; prevY = by; prevZ = bz;
+    }
+    return null;
+  }
+
+  function raycastMob(maxDist = 4.2) {
+    const dx = Math.sin(player.yaw) * Math.cos(player.pitch);
+    const dy = Math.sin(player.pitch);
+    const dz = -Math.cos(player.yaw) * Math.cos(player.pitch);
+    const ox = player.x, oy = player.y + 1.55, oz = player.z;
+    let best = null, bestT = maxDist;
+    for (const m of mobs) {
+      const mx = m.x - ox, my = (m.y + 0.7) - oy, mz = m.z - oz;
+      const proj = mx * dx + my * dy + mz * dz;
+      if (proj < 0 || proj > bestT) continue;
+      const distSq = (mx * mx + my * my + mz * mz) - proj * proj;
+      if (distSq < 0.65) {
+        best = m;
+        bestT = proj;
+      }
+    }
+    return best;
+  }
+
+  // --- TOAST & HUD ---
+  let toastTimeout;
+  function showToast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.style.opacity = '1';
+    clearTimeout(toastTimeout);
+    toastTimeout = setTimeout(() => el.style.opacity = '0', 2200);
+  }
+
+  function renderHotbar() {
+    const hb = document.getElementById('hotbar');
+    hb.innerHTML = '';
+    HOTBAR_ITEMS.forEach((item, i) => {
+      const slot = document.createElement('div');
+      slot.className = 'slot' + (i === player.selectedSlot ? ' active' : '');
+      slot.innerHTML = `
+        <span class="slot-key">${i + 1}</span>
+        <div class="slot-swatch" style="background:${item.swatch}"></div>
+        <span>${item.name}</span>
+        <span class="slot-count">${item.id === 'sword' ? '⚔️' : item.count}</span>
+      `;
+      hb.appendChild(slot);
+    });
+  }
+
+  function updateHUD() {
+    document.getElementById('pos-info').textContent =
+      `Pos: ${Math.floor(player.x)}, ${Math.floor(player.y)}, ${Math.floor(player.z)} | Mode: ${player.fly ? 'Creative Fly' : 'Survival'} | Apples: ${player.apples}`;
+    document.getElementById('time-info').textContent =
+      `Time: ${dayFactor > 0.5 ? 'Day' : 'Night'} | Hostile Mobs: ${mobs.length}`;
+
+    const hearts = Math.ceil(player.health / 2);
+    document.getElementById('health-bar').textContent =
+      '❤️'.repeat(Math.max(0, hearts)) + '🖤'.repeat(Math.max(0, 10 - hearts));
+
+    const food = Math.ceil(player.hunger / 2);
+    document.getElementById('hunger-bar').textContent =
+      '🍗'.repeat(Math.max(0, food)) + '🦴'.repeat(Math.max(0, 10 - food));
+
+    const airBar = document.getElementById('air-bar');
+    if (player.headInWater && !player.fly) {
+      airBar.style.display = 'flex';
+      const bubbles = Math.ceil(player.air / 2);
+      airBar.textContent = '🫧'.repeat(Math.max(0, bubbles));
+    } else {
+      airBar.style.display = 'none';
+    }
+
+    document.getElementById('underwater-tint').style.display = player.headInWater ? 'block' : 'none';
+  }
+
+  function damagePlayer(amount, reason = '') {
+    if (player.fly || player.hurtCooldown > 0) return;
+    player.health = Math.max(0, player.health - amount);
+    player.hurtCooldown = 0.65;
+    const flash = document.getElementById('damage-flash');
+    flash.style.opacity = '1';
+    setTimeout(() => flash.style.opacity = '0', 160);
+    if (player.health <= 0) {
+      showToast(`You died (${reason})! Respawning...`);
+      player.x = 32; player.y = 28; player.z = 32;
+      player.vx = player.vy = player.vz = 0;
+      player.health = 20;
+      player.hunger = 20;
+      player.air = 10;
+    }
+    updateHUD();
+  }
+
+  function eatApple() {
+    if (player.apples <= 0) {
+      showToast('No apples left! Defeat mobs to collect apples.');
+      return;
+    }
+    if (player.hunger >= 20 && player.health >= 20) {
+      showToast('Health and hunger are already full!');
+      return;
+    }
+    player.apples--;
+    player.hunger = Math.min(20, player.hunger + 6);
+    player.health = Math.min(20, player.health + 4);
+    showToast(`Ate an Apple! (+6 Hunger, +4 HP) | ${player.apples} left`);
+    updateHUD();
+  }
+
+  // --- SAVE / LOAD SYSTEM ---
+  function serializeWorld() {
+    let bin = '';
+    for (let i = 0; i < world.length; i++) bin += String.fromCharCode(world[i]);
+    return JSON.stringify({
+      version: 2,
+      seed: worldSeed,
+      worldB64: btoa(bin),
+      player: {
+        x: player.x, y: player.y, z: player.z,
+        yaw: player.yaw, pitch: player.pitch,
+        health: player.health, hunger: player.hunger,
+        apples: player.apples, fly: player.fly
+      },
+      inventory: HOTBAR_ITEMS.map(i => i.count),
+      mobs
+    });
+  }
+
+  function loadSerializedWorld(jsonStr) {
+    try {
+      const data = JSON.parse(jsonStr);
+      const bin = atob(data.worldB64);
+      for (let i = 0; i < world.length && i < bin.length; i++) {
+        world[i] = bin.charCodeAt(i);
+      }
+      worldSeed = data.seed || worldSeed;
+      Object.assign(player, data.player);
+      if (data.inventory) {
+        data.inventory.forEach((c, idx) => { if (HOTBAR_ITEMS[idx]) HOTBAR_ITEMS[idx].count = c; });
+      }
+      mobs = data.mobs || [];
+      rebuildMesh();
+      renderHotbar();
+      updateHUD();
+      showToast('World loaded successfully!');
+    } catch (e) {
+      showToast('Failed to load save data.');
+    }
+  }
+
+  function quickSaveBrowser() {
+    localStorage.setItem('minicraft3d_save', serializeWorld());
+    showToast('Game saved to browser storage! [K]');
+  }
+
+  function quickLoadBrowser() {
+    const saved = localStorage.getItem('minicraft3d_save');
+    if (!saved) {
+      showToast('No browser save found.');
+      return;
+    }
+    loadSerializedWorld(saved);
+  }
+
+  // --- INPUT HANDLING ---
+  const keys = {};
+  let locked = false;
+  const overlay = document.getElementById('overlay');
+
+  document.getElementById('play-btn').addEventListener('click', () => {
+    canvas.requestPointerLock();
+  });
+
+  document.addEventListener('pointerlockchange', () => {
+    locked = document.pointerLockElement === canvas;
+    overlay.style.display = locked ? 'none' : 'flex';
+  });
+
+  document.addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+    if (e.code.startsWith('Digit')) {
+      const n = parseInt(e.code.replace('Digit', ''), 10) - 1;
+      if (n >= 0 && n < HOTBAR_ITEMS.length) {
+        player.selectedSlot = n;
+        renderHotbar();
+      }
+    }
+    if (e.code === 'KeyF') {
+      player.fly = !player.fly;
+      player.vy = 0;
+      showToast(player.fly ? 'Fly Mode Enabled' : 'Survival Mode Enabled');
+      updateHUD();
+    }
+    if (e.code === 'KeyE') eatApple();
+    if (e.code === 'KeyK') quickSaveBrowser();
+    if (e.code === 'KeyL') quickLoadBrowser();
+  });
+
+  document.addEventListener('keyup', (e) => { keys[e.code] = false; });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!locked) return;
+    player.yaw += e.movementX * 0.0024;
+    player.pitch = Math.max(-1.5, Math.min(1.5, player.pitch - e.movementY * 0.0024));
+  });
+
+  document.addEventListener('wheel', (e) => {
+    if (!locked) return;
+    player.selectedSlot = (player.selectedSlot + (e.deltaY > 0 ? 1 : -1) + HOTBAR_ITEMS.length) % HOTBAR_ITEMS.length;
+    renderHotbar();
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    if (!locked) return;
+    if (e.button === 0) {
+      // Attack mob first if targeted
+      const mob = raycastMob();
+      if (mob) {
+        const holdingSword = HOTBAR_ITEMS[player.selectedSlot].id === 'sword';
+        const dmg = holdingSword ? 5 : 2;
+        mob.hp -= dmg;
+        mob.hurtTimer = 0.25;
+        mob.vy = 4.2;
+        mob.vx = Math.sin(player.yaw) * 6;
+        mob.vz = -Math.cos(player.yaw) * 6;
+        if (mob.hp <= 0) {
+          mobs = mobs.filter(m => m !== mob);
+          player.apples += 1;
+          showToast(`Defeated ${mob.type}! (+1 Apple)`);
+          updateHUD();
+        }
+        return;
+      }
+
+      // Break block
+      const hit = raycastBlock();
+      if (hit && hit.by > 0) {
+        setBlock(hit.bx, hit.by, hit.bz, 0);
+        const slot = HOTBAR_ITEMS.find(it => it.id === hit.id);
+        if (slot) slot.count++;
+        rebuildMesh();
+        renderHotbar();
+      }
+    } else if (e.button === 2) {
+      const selected = HOTBAR_ITEMS[player.selectedSlot];
+      if (selected.id === 'sword') {
+        eatApple();
+        return;
+      }
+      if (selected.count <= 0) {
+        showToast('Out of blocks in this slot!');
+        return;
+      }
+      const hit = raycastBlock();
+      if (hit && inBounds(hit.prevX, hit.prevY, hit.prevZ)) {
+        // Prevent placing inside player
+        const dx = Math.abs((hit.prevX + 0.5) - player.x);
+        const dz = Math.abs((hit.prevZ + 0.5) - player.z);
+        const dy = hit.prevY - player.y;
+        if (dx < 0.7 && dz < 0.7 && dy >= -0.5 && dy <= 1.7) return;
+
+        setBlock(hit.prevX, hit.prevY, hit.prevZ, selected.id);
+        selected.count--;
+        rebuildMesh();
+        renderHotbar();
+      }
+    }
+  });
+  document.addEventListener('contextmenu', e => e.preventDefault());
+
+  // File export / import buttons
+  document.getElementById('save-file-btn').addEventListener('click', () => {
+    const blob = new Blob([serializeWorld()], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `minicraft3d-world-${worldSeed}.json`;
+    a.click();
+  });
+
+  document.getElementById('load-file-btn').addEventListener('click', () => {
+    document.getElementById('file-input').click();
+  });
+
+  document.getElementById('file-input').addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => loadSerializedWorld(reader.result);
+    reader.readAsText(file);
+  });
+
+  document.getElementById('new-world-btn').addEventListener('click', () => {
+    generateWorld();
+    player.x = 32; player.y = 28; player.z = 32;
+    player.health = 20; player.hunger = 20; player.air = 10;
+    populateMobs();
+    rebuildMesh();
+    updateHUD();
+    showToast('Generated new world with caves!');
+  });
+
+  // --- SIMULATION & DAY/NIGHT ---
+  let worldTime = 0;
+  let dayFactor = 1;
+
+  function updatePhysics(dt) {
+    worldTime += dt;
+    dayFactor = 0.55 + 0.45 * Math.sin(worldTime * 0.04);
+
+    if (player.hurtCooldown > 0) player.hurtCooldown -= dt;
+
+    // Water checks
+    const feetBlock = getBlock(Math.floor(player.x), Math.floor(player.y + 0.2), Math.floor(player.z));
+    const headBlock = getBlock(Math.floor(player.x), Math.floor(player.y + 1.55), Math.floor(player.z));
+    player.inWater = (feetBlock === 7 || headBlock === 7);
+    player.headInWater = (headBlock === 7);
+
+    // Drowning & oxygen
+    if (player.headInWater && !player.fly) {
+      player.air = Math.max(0, player.air - dt * 1.4);
+      if (player.air <= 0) damagePlayer(2, 'Drowned');
+    } else {
+      player.air = Math.min(player.maxAir, player.air + dt * 3);
+    }
+
+    // Hunger & health regeneration
+    if (!player.fly) {
+      player.hungerTimer += dt;
+      if (player.hungerTimer > 14) {
+        player.hungerTimer = 0;
+        if (player.hunger > 0) player.hunger--;
+        else damagePlayer(1, 'Starvation');
+      }
+      if (player.hunger >= 16 && player.health < player.maxHealth) {
+        player.regenTimer += dt;
+        if (player.regenTimer > 3.5) {
+          player.regenTimer = 0;
+          player.health = Math.min(player.maxHealth, player.health + 1);
+        }
+      }
+    }
+
+    // Movement
+    const speed = player.fly ? 12 : (player.inWater ? 4.2 : 6.2);
+    const forward = (keys['KeyW'] ? 1 : 0) - (keys['KeyS'] ? 1 : 0);
+    const strafe = (keys['KeyD'] ? 1 : 0) - (keys['KeyA'] ? 1 : 0);
+    const sinY = Math.sin(player.yaw), cosY = Math.cos(player.yaw);
+
+    let mx = (sinY * forward + cosY * strafe);
+    let mz = (-cosY * forward + sinY * strafe);
+    const len = Math.hypot(mx, mz);
+    if (len > 0) { mx = (mx / len) * speed; mz = (mz / len) * speed; }
+
+    player.vx = mx;
+    player.vz = mz;
+
+    if (player.fly) {
+      player.vy = ((keys['Space'] ? 1 : 0) - (keys['ShiftLeft'] ? 1 : 0)) * 9;
+    } else if (player.inWater) {
+      player.vy -= 6.5 * dt;
+      player.vy *= 0.90;
+      if (keys['Space']) player.vy = 4.5;
+    } else {
+      player.vy -= 22 * dt;
+      if (keys['Space'] && player.onGround) {
+        player.vy = 8.2;
+        player.onGround = false;
+      }
+    }
+
+    // Axis-separated collision
+    if (!collides(player.x + player.vx * dt, player.y, player.z)) player.x += player.vx * dt;
+    if (!collides(player.x, player.y, player.z + player.vz * dt)) player.z += player.vz * dt;
+
+    const fallVel = player.vy;
+    if (!collides(player.x, player.y + player.vy * dt, player.z)) {
+      player.y += player.vy * dt;
+      player.onGround = false;
+    } else {
+      if (player.vy < 0) {
+        if (!player.fly && !player.inWater && fallVel < -14.5) {
+          damagePlayer(Math.floor((-fallVel - 13) * 1.4), 'Fall Damage');
+        }
+        player.onGround = true;
+      }
+      player.vy = 0;
+    }
+
+    // Keep inside world border
+    player.x = Math.max(1, Math.min(WX - 1, player.x));
+    player.z = Math.max(1, Math.min(WZ - 1, player.z));
+    if (player.y < -5) { player.y = 30; damagePlayer(6, 'Fell into void'); }
+
+    // Update Mobs
+    for (const m of mobs) {
+      if (m.hurtTimer > 0) m.hurtTimer -= dt;
+      if (m.attackCooldown > 0) m.attackCooldown -= dt;
+
+      const dx = player.x - m.x;
+      const dz = player.z - m.z;
+      const dist = Math.hypot(dx, dz);
+
+      const mWater = getBlock(Math.floor(m.x), Math.floor(m.y + 0.3), Math.floor(m.z)) === 7;
+      m.vy -= (mWater ? 5 : 20) * dt;
+      if (mWater) m.vy = Math.max(m.vy, 2.2);
+
+      if (dist < 18 && dist > 0.8 && !player.fly) {
+        const mSpeed = m.type === 'zombie' ? 2.4 : 2.1;
+        m.vx = (dx / dist) * mSpeed;
+        m.vz = (dz / dist) * mSpeed;
+        m.jumpTimer -= dt;
+        if (m.jumpTimer <= 0) {
+          m.vy = m.type === 'slime' ? 6.5 : 5.2;
+          m.jumpTimer = m.type === 'slime' ? 1.1 : 1.8;
+        }
+      } else {
+        m.vx *= 0.85;
+        m.vz *= 0.85;
+      }
+
+      if (!collides(m.x + m.vx * dt, m.y, m.z)) m.x += m.vx * dt;
+      if (!collides(m.x, m.y, m.z + m.vz * dt)) m.z += m.vz * dt;
+      if (!collides(m.x, m.y + m.vy * dt, m.z)) {
+        m.y += m.vy * dt;
+      } else {
+        m.vy = 0;
+      }
+
+      if (dist < 1.25 && Math.abs(player.y - m.y) < 1.5 && m.attackCooldown <= 0) {
+        damagePlayer(m.type === 'zombie' ? 3 : 2, `Attacked by ${m.type}`);
+        m.attackCooldown = 1.1;
+      }
+    }
+
+    // Respawn mobs if low
+    if (mobs.length < 6 && Math.random() < dt * 0.25) {
+      const mx = 6 + Math.floor(Math.random() * (WX - 12));
+      const mz = 6 + Math.floor(Math.random() * (WZ - 12));
+      for (let my = WY - 2; my > 2; my--) {
+        if (getBlock(mx, my, mz) === 0 && getBlock(mx, my - 1, mz) !== 0 && getBlock(mx, my - 1, mz) !== 7) {
+          spawnMob(mx + 0.5, my, mz + 0.5, Math.random() > 0.5 ? 'zombie' : 'slime');
+          break;
+        }
+      }
+    }
+  }
+
+  // --- RENDER LOOP ---
+  function render() {
+    if (canvas.width !== window.innerWidth || canvas.height !== window.innerHeight) {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+
+    const skyR = (player.headInWater ? 0.08 : 0.45) * dayFactor;
+    const skyG = (player.headInWater ? 0.28 : 0.72) * dayFactor;
+    const skyB = (player.headInWater ? 0.62 : 0.96) * dayFactor;
+
+    gl.clearColor(skyR, skyG, skyB, 1.0);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+
+    const proj = perspective(Math.PI / 2.6, canvas.width / canvas.height, 0.1, 120);
+    const view = viewMatrix(player.x, player.y + 1.55, player.z, player.yaw, player.pitch);
+
+    gl.uniformMatrix4fv(uProj, false, proj);
+    gl.uniformMatrix4fv(uView, false, view);
+    gl.uniform3f(uSkyColor, skyR, skyG, skyB);
+
+    // Draw World
+    gl.bindBuffer(gl.ARRAY_BUFFER, worldBuffer);
+    gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 28, 0);
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aColor, 3, gl.FLOAT, false, 28, 12);
+    gl.enableVertexAttribArray(aColor);
+    gl.vertexAttribPointer(aLight, 1, gl.FLOAT, false, 28, 24);
+    gl.enableVertexAttribArray(aLight);
+    gl.drawArrays(gl.TRIANGLES, 0, worldVertexCount);
+
+    // Draw Mobs
+    if (mobs.length > 0) {
+      const mobVerts = [];
+      for (const m of mobs) {
+        const hurt = m.hurtTimer > 0;
+        if (m.type === 'slime') {
+          const col = hurt ? [1, 0.2, 0.2] : [0.25, 0.85, 0.32];
+          pushBox(mobVerts, m.x - 0.4, m.y, m.z - 0.4, 0.8, 0.8, 0.8, col, 1.0);
+        } else {
+          // Zombie body + head
+          const bodyCol = hurt ? [1, 0.2, 0.2] : [0.18, 0.55, 0.62];
+          const headCol = hurt ? [1, 0.2, 0.2] : [0.32, 0.62, 0.28];
+          pushBox(mobVerts, m.x - 0.3, m.y, m.z - 0.2, 0.6, 1.15, 0.4, bodyCol, 1.0);
+          pushBox(mobVerts, m.x - 0.25, m.y + 1.15, m.z - 0.25, 0.5, 0.5, 0.5, headCol, 1.0);
+        }
+      }
+      const mArr = new Float32Array(mobVerts);
+      gl.bindBuffer(gl.ARRAY_BUFFER, mobBuffer);
+      gl.bufferData(gl.ARRAY_BUFFER, mArr, gl.DYNAMIC_DRAW);
+      gl.vertexAttribPointer(aPos, 3, gl.FLOAT, false, 28, 0);
+      gl.vertexAttribPointer(aColor, 3, gl.FLOAT, false, 28, 12);
+      gl.vertexAttribPointer(aLight, 1, gl.FLOAT, false, 28, 24);
+      gl.drawArrays(gl.TRIANGLES, 0, mArr.length / 7);
+    }
+  }
+
+  // --- INIT & MAIN LOOP ---
+  generateWorld();
+  populateMobs();
+  rebuildMesh();
+  renderHotbar();
+  updateHUD();
+
+  let lastTime = performance.now();
+  let hudTimer = 0;
+  function loop(now) {
+    const dt = Math.min(0.05, (now - lastTime) / 1000);
+    lastTime = now;
+    if (locked) {
+      updatePhysics(dt);
+      hudTimer += dt;
+      if (hudTimer > 0.15) {
+        hudTimer = 0;
+        updateHUD();
+      }
+    }
+    render();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
