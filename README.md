@@ -1,3 +1,4 @@
+# Note: Please go to the "Releases" section to see our releases and to download the files.
 # Minecraft (AI Generated for now)
 Our BETA Minecraft Testing platform. Please use responsibliy.
 **Note to our fellow friends:**
